@@ -1,0 +1,25 @@
+name: Laravel Cron
+
+on:
+  schedule:
+    - cron: '* * * * *'
+
+jobs:
+  laravel-cron:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+
+    - name: Set up PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '7.4'
+
+    - name: Install dependencies
+      run: |
+        composer install
+
+    - name: Run Laravel Schedule
+      run: php artisan schedule:run
