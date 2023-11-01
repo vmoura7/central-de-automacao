@@ -31,14 +31,19 @@ class CheckSiteAvailability implements ShouldQueue
 
         foreach ($sites as $site) {
             $response = Http::get($site->url);
-            $responseCode = $response->status();
-
-            $this->updateSiteStatus($site->url, $responseCode);
-
-            if ($responseCode < 400) {
-                $this->handleSiteAvailable($telegram, $site->url);
+        
+            if ($response->successful()) {
+                $responseCode = $response->status();
+                $this->updateSiteStatus($site->url, $responseCode);
+        
+                if ($responseCode < 400) {
+                    $this->handleSiteAvailable($telegram, $site->url);
+                } else {
+                    $this->handleSiteUnavailable($telegram, $site->url, $responseCode);
+                }
             } else {
-                $this->handleSiteUnavailable($telegram, $site->url, $responseCode);
+                // Tratar o caso em que a resposta não foi bem-sucedida
+                $this->handleSiteError($telegram, $site->url);
             }
         }
     }
@@ -49,6 +54,13 @@ class CheckSiteAvailability implements ShouldQueue
             $this->notifyTelegram($telegram, "🚨 Erro {$responseCode} 🚨\nAtenção: O portal {$siteUrl} está indisponível!");
             Cache::put("unavailable_site:{$siteUrl}", now());
         }
+    }
+
+    protected function handleSiteError($telegram, $siteUrl)
+    {
+        // Lógica para lidar com casos em que a resposta não foi bem-sucedida (por exemplo, erro no servidor)
+        // Notifique ou faça algo apropriado para esses casos.
+        $this->notifyTelegram($telegram, "🚨 Erro no servidor 🚨\nO portal {$siteUrl} não retornou um código de resposta válido!");
     }
 
     protected function handleSiteAvailable($telegram, $siteUrl)
