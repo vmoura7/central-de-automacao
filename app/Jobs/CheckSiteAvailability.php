@@ -10,6 +10,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Http\Client\ConnectionException;
 use NotificationChannels\Telegram\Telegram;
 
 class CheckSiteAvailability implements ShouldQueue
@@ -25,26 +26,35 @@ class CheckSiteAvailability implements ShouldQueue
 
     public function handle(Telegram $telegram)
     {
-        // info("Job CheckSiteAvailability executado em " . now());
-
         $sites = Site::find($this->siteIds);
 
-        foreach ($sites as $site) {
-            $response = Http::get($site->url);
-        
-            if ($response->successful()) {
-                $responseCode = $response->status();
-                $this->updateSiteStatus($site->url, $responseCode);
-        
-                if ($responseCode < 400) {
-                    $this->handleSiteAvailable($telegram, $site->url);
-                } else {
-                    $this->handleSiteUnavailable($telegram, $site->url, $responseCode);
-                }
-            } else {
-                // Tratar o caso em que a resposta não foi bem-sucedida
-                $this->handleSiteError($telegram, $site->url);
+        $responses = Http::pool(function ($http) use ($sites) {
+            foreach ($sites as $site) {
+                $http->get($site->url);
             }
+        });
+
+        foreach ($responses as $index => $response) {
+            $site = $sites[$index];
+            $responseCode = $response->status();
+
+            $this->updateSiteStatus($site->url, $responseCode);
+
+            if ($responseCode < 400) {
+                $this->handleSiteAvailable($telegram, $site->url);
+            } else {
+                $this->handleSiteUnavailable($telegram, $site->url, $responseCode);
+            }
+        }
+    }
+
+    protected function handleConnectionError($telegram, $siteUrl, $errorMessage)
+    {
+        // Check if a notification was sent recently
+        if (!$this->wasSiteUnavailableRecently($siteUrl)) {
+            // Customize this message as needed
+            $this->notifyTelegram($telegram, "🚨 Erro de conexão 🚨\nAtenção: O portal {$siteUrl} não pôde ser acessado. Mensagem de erro: {$errorMessage}");
+            Cache::put("unavailable_site:{$siteUrl}", now());
         }
     }
 
@@ -54,13 +64,6 @@ class CheckSiteAvailability implements ShouldQueue
             $this->notifyTelegram($telegram, "🚨 Erro {$responseCode} 🚨\nAtenção: O portal {$siteUrl} está indisponível!");
             Cache::put("unavailable_site:{$siteUrl}", now());
         }
-    }
-
-    protected function handleSiteError($telegram, $siteUrl)
-    {
-        // Lógica para lidar com casos em que a resposta não foi bem-sucedida (por exemplo, erro no servidor)
-        // Notifique ou faça algo apropriado para esses casos.
-        $this->notifyTelegram($telegram, "🚨 Erro no servidor 🚨\nO portal {$siteUrl} não retornou um código de resposta válido!");
     }
 
     protected function handleSiteAvailable($telegram, $siteUrl)
