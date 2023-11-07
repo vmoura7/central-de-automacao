@@ -30,12 +30,24 @@ class CheckSiteAvailability implements ShouldQueue
 
         $responses = Http::pool(function ($http) use ($sites) {
             foreach ($sites as $site) {
-                $http->get($site->url);
+                try {
+                    $http->get($site->url);
+                } catch (\Exception $e) {
+                    // Handle the exception here, e.g., log it or notify
+                    $this->handleConnectionError($telegram, $site->url, $e->getMessage());
+                }
             }
         });
 
         foreach ($responses as $index => $response) {
             $site = $sites[$index];
+
+            if ($response instanceof \Exception) {
+                // Handle the connection error here if needed
+                $this->handleConnectionError($telegram, $site->url, $response->getMessage());
+                continue; // Skip to the next iteration
+            }
+
             $responseCode = $response->status();
 
             $this->updateSiteStatus($site->url, $responseCode);
@@ -47,6 +59,7 @@ class CheckSiteAvailability implements ShouldQueue
             }
         }
     }
+
 
     protected function handleConnectionError($telegram, $siteUrl, $errorMessage)
     {
