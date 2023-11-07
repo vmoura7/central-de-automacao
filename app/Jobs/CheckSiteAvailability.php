@@ -68,6 +68,7 @@ class CheckSiteAvailability implements ShouldQueue
             // Customize this message as needed
             $this->notifyTelegram($telegram, "🚨 Erro de conexão 🚨\nAtenção: O portal {$siteUrl} não pôde ser acessado. Mensagem de erro: {$errorMessage}");
             Cache::put("unavailable_site:{$siteUrl}", now());
+            Cache::put('last_checked:' . $siteUrl, now());
         }
     }
 
@@ -118,6 +119,13 @@ class CheckSiteAvailability implements ShouldQueue
         );
 
         Cache::forget("unavailable_site:{$siteUrl}");
+    }
+
+    protected function wasSiteUnavailableRecently($siteUrl) {
+        // Verificar no cache se existe registro de disponibilidade
+        // nos últimos minutos, por exemplo
+        return Cache::has('last_checked:' . $siteUrl) &&
+               Cache::get('last_checked:' . $siteUrl) > now()->subMinutes(5);
     }
 
     protected function notifyTelegram(Telegram $telegram, $message)
